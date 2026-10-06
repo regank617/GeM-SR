@@ -1,0 +1,89 @@
+# =============================================================================
+# LiDAR tokenizer — learned VQ (Haar + fusion), train with training/tokenizer/trainV5.py
+# =============================================================================
+# Dispatch: set model.tokenizer.target to LidarTokenizerVQ (see build_tokenizer_from_config).
+
+globals:
+  seed: 42
+  resolution: 48
+  per_gpu_batch_size: 64
+  learning_rate: 1e-4
+  output_dir: "/gemsr_tokenizer_runs"
+
+experiment:
+  project: "GeM-SR"
+  name: "GeM-SR_Modeling"
+  run_name: "gemsr_tokenizer_vq_flor"
+  logger: "wandb"
+  resume: true
+  debug: false
+  intervals:
+    save_every: 1_000
+    eval_every: 500
+    log_steps: 100
+  checkpoints:
+    init: ""
+  notes: ""
+
+# Built by training/tokenizer/trainV5.py via build_tokenizer_from_config() (VQ family).
+# Ablations (same schema, different model.tokenizer.target / latent_dim):
+#   lidar_tokenizerVQ_no_ll.yaml, lidar_tokenizerVQ_indep.yaml, lidar_tokenizerVQ_vanilla.yaml
+model:
+  tokenizer:
+    target: "src.modeling.tokenizer.tokenizer_vq.LidarTokenizerVQ"
+    params:
+      input_channels: 1
+      hidden_dim: 64
+      num_scales: 3
+      latent_dim: 4
+      inter_loss_weight: 2.0
+      use_refiner: true
+      # Euclidean VQ codebook sizes (flat indices 0 .. V-1).
+      # 175 matches legacy root FSQ |V| = 7*5*5; tune detail for capacity vs. speed.
+      codebook_size_root: 175
+      codebook_size_detail: 2401
+      commitment_cost: 0.25
+      # VQ loss is summed over root + each detail step; keep modest vs. recon + inter MSE.
+      vq_loss_weight: 0.25
+      # tanh-bound latents before VQ (FSQ-style); prevents huge L2 / commit losses from unbounded convs.
+      vq_use_tanh_bound: true
+      apply_sparsity_mask_to_latents: true
+      # --- Backbone (same flags as V5 YAML) ---
+      tokenizer_conv_bias: false
+      tokenizer_standard_blocks: false
+
+optimizer:
+  name: "adamw"
+  params:
+    lr: ${globals.learning_rate}
+    weight_decay: 1e-4
+    betas: [0.9, 0.999]
+    eps: 1e-8
+  scheduler:
+    name: "cosine_with_minimum"
+    warmup_steps: 5000
+
+dataset:
+  infra:
+    root_dir: "./data"
+    num_workers_per_gpu: 8
+    pin_memory: true
+    persistent_workers: true
+  loader:
+    per_gpu_batch_size: ${globals.per_gpu_batch_size}
+    resolution: ${globals.resolution}
+    normalize_diffusion: false
+    preload_to_ram: false
+
+training:
+  compute:
+    mixed_precision: "bf16"
+    enable_tf32: true
+    grad_accum_steps: 1
+    max_grad_norm: 1.0
+  duration:
+    max_steps: 300_000
+    num_epochs: 400
+  ema:
+    enabled: true
+    decay: 0.999

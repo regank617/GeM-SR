@@ -1,0 +1,164 @@
+# =============================================================================
+# LiDAR SSM V5 + learned VQ tokenizer (joint layout)
+# =============================================================================
+# trainV5 (``build_model_v5``): when ``pretrained.path_to_config`` is set, **all** tokenizer
+# constructor hyperparameters come from that tokenizer training YAML
+# (``model.tokenizer.params`` + ``target`` inside that file). ``path_to_ckpt`` loads **weights
+# only** (e.g. ``model.safetensors``). The ``model.tokenizer.params`` block **below** on this
+# SSM file is **not** merged into the tokenizer build when ``path_to_config`` is set — remove
+# it or keep it only as human notes; canonical numbers live next to the tokenizer checkpoint.
+# Generator must use ``tokenizer_layout: joint`` (VQ is not supported with separate FSQs).
+#
+# VQ has no FSQ void class: keep ``use_ce_weighting: false`` (dense CE). Optional
+# ``vq_generator_zero_idx`` biases generator heads when there is no FSQ null index.
+#
+# Before running: set ``path_to_config`` / ``path_to_ckpt`` to your VQ tokenizer run
+# (same pair you use in eval). Params in the tokenizer YAML (codebook sizes, tanh,
+# apply_sparsity_mask_to_latents, …) must match the checkpoint.
+
+globals:
+  seed: 42
+  resolution: 48
+  per_gpu_batch_size: 64
+  learning_rate: 5.0e-4
+  cnn_learning_rate: 1.0e-4
+  diffusion_learning_rate: 1.0e-4
+  output_dir: "/ssm_runs"
+  data_path: './data'
+
+experiment:
+  project: "GeM-SR"
+  name: "GeM-SR_Modeling"
+  run_name: "gemsr_gen_vq_no_ll"
+  logger: "wandb"
+  resume: True
+  debug: False
+  intervals:
+    save_every: 2500
+    eval_every: 1000
+    log_steps: 100
+  notes: 'SSM paper ConvNeXt, no cfg, vanilla VQ tokenizer maryland'
+
+finetuning:
+  active: False
+  refiner_finetune: False
+  finetuning_steps: 25000
+  checkpoint: 97500
+  layers:
+    - "out_conv"
+    - "proj_ll_out"
+    - "fusion_decoders"
+  lambda_l1: 1.0
+  lambda_mse: 0.0
+  lambda_ssim: 0.5
+
+model:
+  tokenizer:
+    # Unused for module construction when ``pretrained.path_to_config`` is set (see header).
+    # Optional: delete this ``params`` block to avoid implying SSM overrides the tokenizer YAML.
+    params:
+      input_channels: 1
+      tokenizer_conv_bias: false
+      tokenizer_standard_blocks: false
+      use_refiner: true
+    pretrained:
+      # Must be the saved config from training/tokenizer/trainV5.py (contains LidarTokenizerVQ target).
+      #path_to_config: './path/to/tokenizer_runs/outputs/GeM-SR/GeM-SR_Modeling/gemsr_tokenizer_vq_cali_1/config.yaml'
+      #path_to_ckpt: './path/to/tokenizer_runs/outputs/GeM-SR/GeM-SR_Modeling/gemsr_tokenizer_vq_cali_1/logs/checkpoint-60000/model.safetensors'
+      path_to_config: './path/to/tokenizer_runs/outputs/GeM-SR/GeM-SR_Modeling/gemsr_tokenizer_vq_no_ll_1/config.yaml'
+      path_to_ckpt: './path/to/tokenizer_runs/outputs/GeM-SR/GeM-SR_Modeling/gemsr_tokenizer_vq_no_ll_1/logs/checkpoint-299000/model.safetensors'
+  generator_v5:
+    target: "src.modeling.generator.generator_merged.HierarchicalGenerator"
+    params:
+      tokenizer_dim: 1
+      embed_dim: 384
+      rq_depths: 1
+      cond_dropout_prob: 0.1
+      root_depth: 2
+      s0_depth: 2
+      s1_depth: 4
+      s2_depth: 6
+      heads: 6
+      mlp_ratio: 2
+
+      tokenizer_layout: joint
+      fast: true
+      backbone: convnext
+      paper_ablation: false
+      cfg_training: false
+      cfg_scale: 1.0
+
+      # Paper generator + conditioner biases (``trainV5`` → ``PaperConvNeXtLayerConfig`` / ``ConditionerLayerConfig``).
+      conv_bias: false
+      #linear_bias: false
+      conditioner_conv_bias: false
+
+      temperature: 1.0
+      top_k: 100
+
+      # FSQ joint-tokenizer flags (V5 FSQ path only); not passed into ``LidarTokenizerVQ`` — safe to leave, no effect on VQ weights.
+      apply_sparsity_mask_to_latents: true
+      use_null_token_routing: true
+
+      # --- VQ + loss: dense CE (no void class weighting) ---
+      use_ce_weighting: false
+      ce_void_class_weight: 0.5
+      # Generator head init when tokenizer has no null_idx_root (unused if you add explicit zero_idx).
+      vq_generator_zero_idx: 0
+
+      use_sparsity_weighted_pretrain_l1: true
+      pretrain_edge_weight_multiplier: 10.0
+      pretrain_active_threshold: 0.05
+
+optimizer:
+  name: "adamw"
+  params:
+    lr: ${globals.learning_rate}
+    weight_decay: 0.05
+    betas: [0.9, 0.95]
+    eps: 1e-8
+  scheduler:
+    name: "cosine_with_minimum"
+    warmup_steps: 5000
+
+dataset:
+  infra:
+    root_dir:
+      - './data'
+    num_workers_per_gpu: 8
+    pin_memory: True
+    persistent_workers: True
+  loader:
+    per_gpu_batch_size: ${globals.per_gpu_batch_size}
+    resolution: ${globals.resolution}
+
+training:
+  end_to_end: false
+  cond_lr_scale: 0.1
+  loss:
+    # Required for VQ: void-weighted CE needs FSQ null indices.
+    use_ce_weighting: false
+    ce_void_class_weight: 0.5
+    # v5_scale_weights:
+    #   scale_1: 1.25
+    #   scale_2: 1.5
+    v5_scale_weights:
+      root: 1.0
+      scale_0: 1.0
+      scale_1: 1.0
+      scale_2: 1.0
+  pretraining:
+    cond_steps: 20000
+    pretrained_cond_path: '' # './path/to/ssm_runs/outputs/GeM-SR/GeM-SR_Modeling/gemsr_gen_vq_joint_1/logs/best_lpips-step-40000'
+    use_null_routing: true
+    use_sparsity_weighted_pretrain_l1: null
+    pretrain_edge_weight_multiplier: 10.0
+    pretrain_active_threshold: 0.05
+  compute:
+    mixed_precision: "bf16"
+    enable_tf32: True
+    grad_accum_steps: 1
+    max_grad_norm: 1.0
+  duration:
+    max_steps: 300_000
+    num_epochs: 400

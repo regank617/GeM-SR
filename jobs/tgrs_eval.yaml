@@ -1,0 +1,85 @@
+# TGRS robustness hub manifest (Maryland splits).
+# Default save_path is the validation run. Test eval uses
+# benchmarks/evaluation/tgrs_robustness_test (see jobs/tgrs_eval.py --eval-split test).
+# Checkpoint paths below are relative to the MODEL_ROOT env var. Keep machine-specific
+# absolute prefixes out of this file.
+#
+# ResultKey temps: _P = {0.4,0.4,0.6,0.8} = paper Remote Sensing;
+#                  _R = {1,1,1,1} = paper Perceptual.
+# Uniform/Ascending are trained weights (CE λ), not temps.
+
+config: configs/generator/lidar_ssmVQ.yaml
+save_path: benchmarks/evaluation/tgrs_robustness
+
+tokenizer_shared:
+  yaml: ALL_MODELS/vq_ablation/gess_tokenizer_vq_3/config.yaml
+  ckpt: ALL_MODELS/vq_ablation/gess_tokenizer_vq_3/logs/checkpoint-60000/model.safetensors
+
+gemsr_entries:
+  - key: Gess_VQ_C_S_A_R
+    ckpt_dir: ALL_MODELS/vq_ablation/gess_gen_vq_joint_1/logs/best_lpips-step-40000
+    yaml: ALL_MODELS/vq_ablation/gess_gen_vq_joint_1/config.yaml
+    preset: convnext_nocfg
+    cfg_scale: 1.0
+    temps: "1.0,1.0,1.0,1.0"
+  - key: Gess_VQ_C_S_A_P
+    ckpt_dir: ALL_MODELS/vq_ablation/gess_gen_vq_joint_1/logs/best_lpips-step-40000
+    yaml: ALL_MODELS/vq_ablation/gess_gen_vq_joint_1/config.yaml
+    preset: convnext_nocfg
+    cfg_scale: 1.0
+    temps: "0.4,0.4,0.6,0.8"
+  - key: Gess_VQ_C_S_U_R
+    ckpt_dir: ALL_MODELS/vq_ablation/gess_gen_vq_joint_2/logs/best_lpips-step-40000
+    yaml: ALL_MODELS/vq_ablation/gess_gen_vq_joint_2/config.yaml
+    preset: convnext_nocfg
+    cfg_scale: 1.0
+    temps: "1.0,1.0,1.0,1.0"
+  - key: Gess_VQ_C_S_U_P
+    ckpt_dir: ALL_MODELS/vq_ablation/gess_gen_vq_joint_2/logs/best_lpips-step-40000
+    yaml: ALL_MODELS/vq_ablation/gess_gen_vq_joint_2/config.yaml
+    preset: convnext_nocfg
+    cfg_scale: 1.0
+    temps: "0.4,0.4,0.6,0.8"
+  - key: Gess_VQ_T_L_U_R
+    ckpt_dir: ALL_MODELS/vq_ablation/gess_gen_vq_joint_t_1/logs/best_lpips-step-30000
+    yaml: ALL_MODELS/vq_ablation/gess_gen_vq_joint_t_1/config.yaml
+    preset: convnext_nocfg
+    cfg_scale: 1.0
+    temps: "1.0,1.0,1.0,1.0"
+  - key: Gess_VQ_T_L_U_P
+    ckpt_dir: ALL_MODELS/vq_ablation/gess_gen_vq_joint_t_1/logs/best_lpips-step-30000
+    yaml: ALL_MODELS/vq_ablation/gess_gen_vq_joint_t_1/config.yaml
+    preset: convnext_nocfg
+    cfg_scale: 1.0
+    temps: "0.4,0.4,0.6,0.8"
+
+baselines:
+  swinir: ALL_MODELS/benchmarks/swinir/best_model_lpips.pth
+  varsr: ALL_MODELS/benchmarks/varsr/transformer/var_step_30000.pth
+  varsr_vqvae: ALL_MODELS/benchmarks/varsr/tokenizer/best_model_lpips.pth
+  flow: ALL_MODELS/benchmarks/flow/best_model_lpips.pth
+  sr3: ALL_MODELS/benchmarks/sr3/best_model_lpips.pth
+  sr3_ddim_steps: [50, 100, 200, 0]
+  fast_diffusion_steps: [4]
+
+tokenizer_entries:
+  - key: tokenizer_no_ll
+    yaml: ALL_MODELS/tokenizer_ablation/tokenizer_no_ll/config.yaml
+    ckpt: ALL_MODELS/tokenizer_ablation/tokenizer_no_ll/logs/checkpoint-299000/model.safetensors
+  - key: tokenizer_vanilla
+    yaml: ALL_MODELS/tokenizer_ablation/tokenizer_vanilla/config.yaml
+    ckpt: ALL_MODELS/tokenizer_ablation/tokenizer_vanilla/logs/checkpoint-299000/model.safetensors
+  - key: tokenizer_indep
+    yaml: ALL_MODELS/tokenizer_ablation/tokenizer_indep/config.yaml
+    ckpt: ALL_MODELS/tokenizer_ablation/tokenizer_indep/logs/checkpoint-299000/model.safetensors
+  - key: tokenizer_biases
+    yaml: ALL_MODELS/tokenizer_ablation/tokenizer_biases/config.yaml
+    ckpt: ALL_MODELS/tokenizer_ablation/tokenizer_biases/logs/checkpoint-60000/model.safetensors
+  - key: tokenizer_jsrq1
+    yaml: ALL_MODELS/tokenizer_ablation/tokenizer_jsrq/config.yaml
+    ckpt: ALL_MODELS/tokenizer_ablation/tokenizer_jsrq/logs/checkpoint-60000/model.safetensors
+  - key: tokenizer_jsrq_fsq
+    yaml: ALL_MODELS/tokenizer_ablation/tokenizer_jsrq_fsq/config.yaml
+    ckpt: ALL_MODELS/tokenizer_ablation/tokenizer_jsrq_fsq/logs/checkpoint-174000/model.safetensors
+
+tokenizer_var_vqvae: ALL_MODELS/benchmarks/varsr/tokenizer/best_model_lpips.pth

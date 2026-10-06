@@ -1,0 +1,94 @@
+# =============================================================================
+# LiDSSM Global Configuration
+# =============================================================================
+
+# 1. Single Source of Truth (Interpolated elsewhere)
+globals:
+  seed: 42
+  resolution: 48
+  per_gpu_batch_size: 64
+  learning_rate: 1e-4
+  output_dir: "/gemsr_tokenizer_runs"
+
+experiment:
+  project: "GeM-SR"
+  name: "GeM-SR_Modeling" 
+  run_name: "gemsr_tokenizer"
+  logger: "wandb"
+  resume: True
+  debug: False
+  # Step-based intervals for precise control
+  intervals:
+    save_every: 1_000
+    eval_every: 500
+    log_steps: 100
+  checkpoints:
+    init: ""
+  notes: ''
+
+# 2. Model Architecture
+# Built by training/tokenizer/trainV5.py via build_lidar_tokenizer_v5_from_params().
+# Only keys listed under params are read; root FSQ is fixed at [7, 5, 5] in code (V_root=175).
+model:
+  tokenizer:
+    target: "src.modeling.tokenizer.tokenizer_fsq.LidarTokenizerV5"
+    params:
+      input_channels: 1
+      hidden_dim: 64
+      num_scales: 3
+      latent_dim: 4
+      inter_loss_weight: 2.0
+      # If false: skip refiner forward + second MSE term; refiner weights remain for ckpt compat.
+      use_refiner: True
+      # Shared detail FSQ only (V_det = product(levels)); odd levels → half-integer FSQ grid.
+      fsq_levels: [7, 7, 7, 7]
+      apply_sparsity_mask_to_latents: false
+      use_null_token_routing: true
+      # Optional paper alias: if set (true/false), overrides use_null_token_routing.
+      # use_null_routing: true
+      # --- Backbone (tokenizerV5_old): defaults match original ckpts ---
+      # tokenizer_conv_bias: false
+      # tokenizer_standard_blocks: false  # true → GroupNorm + standard res blocks (not zero-preserving)
+
+# 3. Optimization
+optimizer:
+  name: "adamw"
+  params:
+    lr: ${globals.learning_rate}
+    weight_decay: 1e-4
+    betas: [0.9, 0.999]
+    eps: 1e-8
+  
+  scheduler:
+    name: "cosine_with_minimum"
+    warmup_steps: 5000
+
+# 4. Dataset
+dataset:
+  infra:
+    root_dir: './data'
+    num_workers_per_gpu: 8
+    pin_memory: True
+    persistent_workers: True
+  
+  loader:
+    per_gpu_batch_size: ${globals.per_gpu_batch_size}
+    resolution: ${globals.resolution}
+    normalize_diffusion: False
+    preload_to_ram: False
+
+# 5. Training Hardware & Precision
+training:
+  compute:
+    mixed_precision: "bf16" 
+    enable_tf32: True
+    grad_accum_steps: 1
+    max_grad_norm: 1.0
+  
+  duration:
+    max_steps: 300_000
+    num_epochs: 400
+  
+  ema:
+    enabled: True
+    decay: 0.999
